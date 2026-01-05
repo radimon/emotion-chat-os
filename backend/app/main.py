@@ -7,8 +7,9 @@ from pydantic import BaseModel
 
 from backend.core.task_queue import TaskQueue, ChatJob
 from backend.core.worker import Worker
+from backend.services.emotion import EmotionAnalyzer
 
-
+triage_emotion = EmotionAnalyzer()
 queue = TaskQueue(maxsize=200)
 worker = Worker(queue=queue, result_ttl_sec=300)
 
@@ -42,13 +43,21 @@ def health():
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """
-    Producer: enqueue a job, return job_id immediately
-    """
     job_id = str(uuid.uuid4())
     job = ChatJob(job_id=job_id, user_id=req.user_id, message=req.message)
-    await queue.put(job)
-    return {"job_id": job_id}
+    
+    # triage:先粗估情緒嚴重程度 -> priority
+    emo = triage_emotion.analyze(req.message)
+
+    if emo.label in ("sad", "angry", "anxious") and emo.intensity >= 0.6:
+        priority = 1
+    elif emo.label in ("sad", "angry", "anxious"):
+        priority = 3
+    else:
+        priority = 8
+    
+    await queue.put(job, priority=priority)
+    return {"job_id": job_id, "priority": priority}
 
 @app.get("/result/{job_id}")
 def get_result(job_id: str):

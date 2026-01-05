@@ -48,21 +48,34 @@ class Worker:
         while True:
             job = await self.queue.get()
             try:
-                emo = self.emotion.analyze(job.message)
-                pol = self.policy.decide(emo)
-                reply = self._compose_reply(pol.style)
-
-                self.results[job.job_id] = ChatResult(
-                    job_id = job.job_id,
-                    reply = reply,
-                    emotion = emo.__dict__,
-                    policy = pol.__dict__,
-                    created_at = time.time(),
-                )
-
-                # simple TTl cleanup
+                # --- Timeout: 模擬/預防模型卡住 ---
+                # 先把 處理job 包成一個coroutine, 再用 wait_for 限時
+                async def handle_one():
+                    emo = self.emotion.analyze(job.message)
+                    pol = self.policy.decide(emo)
+                    reply = self._compose_reply(pol.style)
+                
+                    self.results[job.job_id] = ChatResult(
+                        job_id = job.job_id,
+                        reply = reply,
+                        emotion = emo.__dict__,
+                        policy = pol.__dict__,
+                        created_at = time.time(),
+                    )
+            
+                try:
+                   await asyncio.wait_for(handle_one(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    # fallback: 超時救回 安全的短回覆
+                    self.results[job.job_id] = ChatResult(
+                        job = job.job_id,
+                        reply = "我收到你的訊息了，我正在整理要怎麼回比較好，能再多給我一點背景嗎？",
+                        emotion = {"label": "unknown", "intensity": 0.0, "confidence": 0.0},
+                        policy = {"style": "fallback", "max_words": 60},
+                        created_at = time.time(),
+                    )
                 self._cleanup_expired()
-
+        
             finally:
                 self.queue.task_done()
     

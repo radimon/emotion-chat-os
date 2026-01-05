@@ -1,5 +1,12 @@
 import asyncio
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
+
+@dataclass(order=True)
+class PriorityizedItem:
+    priority: int
+    created_at: float = field(compare=False)
+    job: "ChatJob" = field(compare=False)
 
 @dataclass
 class ChatJob:
@@ -10,13 +17,15 @@ class ChatJob:
 class TaskQueue:
     """Async producer/consumer queue."""
     def __init__(self, maxsize: int = 200):
-        self._q: asyncio.Queue[ChatJob] = asyncio.Queue(maxsize=maxsize)
+        self._q: asyncio.PriorityQueue[PriorityizedItem] = asyncio.PriorityQueue(maxsize=maxsize)
 
-    async def put(self, job: ChatJob) -> None:
+    async def put(self, job: ChatJob, priority: int = 10) -> None:
+        item = PriorityizedItem(priority=priority, created_at=time.time(), job=job)
         await self._q.put(job)
     
     async def get(self) -> ChatJob:
-        return await self._q.get()
+        item = await self._q.get()
+        return item.job
     
     def task_done(self) -> None:
         self._q.task_done()
