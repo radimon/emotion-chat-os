@@ -102,3 +102,14 @@ class Worker:
     
     def clear_event(self, job_id: str) -> None:
         self._events.pop(job_id, None)
+
+    async def stream_reply(self, job):
+        """
+        Async generator: yields partial reply chunks
+        """
+        text = f"我聽到你說：{job.message}。這聽起來真的很不容易。"
+        words = text.split(" ")
+
+        for w in words:
+            await asyncio.sleep(0.25) # 模擬 LLM latency
+            yield w + " "

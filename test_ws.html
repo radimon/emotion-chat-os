@@ -13,22 +13,43 @@
         <button id="sendBtn"> Send message</button>
         <pre id="log"></pre>
         <script>
-            const logEl = document.getElementById("log");
-            const log = (msg) => {
+            const logEl  = document.getElementById("log");
+            let buffer = "";
+
+            function log(msg){
                 logEl.textContent += msg + "\n";
-            };
+            }
 
             const ws = new WebSocket("ws://127.0.0.1:8000/ws/chat");
 
             ws.onopen = () => log("OPEN");
-            ws.onmessage = (e) => log("RECV: " + e.data);
-            ws.onerror = (e) => log("ERROR: " + JSON.stringify(e));
-            ws.onclose = (e) => log(`CLOSE: code=${e.code} reason=${e.reason}`);
+
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+
+                if(data.type === "ack"){
+                    log("ACK received");
+                }
+
+                if(data.type === "stream"){
+                    buffer += data.delta;
+                    logEl.textContent = buffer;
+                }
+
+                if(data.type === "done"){
+                    log("\n[DONE]");
+                }
+            };
+
+            ws.onerror = (e) => log("ERROR");
+            ws.onclose = (e) => log(`CLOSE: code=${e.code}`);
 
             document.getElementById("sendBtn").onclick = () => {
-                const payload = {user_id: "u1", message: "我真的好累"};
-                log("SEND: " + JSON.stringify(payload));
-                ws.send(JSON.stringify(payload));
+                buffer = "";
+                ws.send(JSON.stringify({
+                    user_id: "u1",
+                    message: "我真的好累"
+                }));
             };
         </script>
     </body>

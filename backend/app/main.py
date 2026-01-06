@@ -12,12 +12,14 @@ from backend.core.task_queue import TaskQueue, ChatJob
 from backend.core.worker import Worker
 from backend.services.emotion import EmotionAnalyzer
 
+# ============ global services ============
 triage_emotion = EmotionAnalyzer()
 queue = TaskQueue(maxsize=200)
 worker = Worker(queue=queue, result_ttl_sec=300)
 
 _worker_task: asyncio.Task | None = None
 
+# ============ app lifecycle ============
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _worker_task
@@ -34,15 +36,16 @@ app = FastAPI(
     lifespan = lifespan
     )
 
-
+# ============ schemas ============
 class ChatRequest(BaseModel):
     user_id: str
     message: str
 
-
+# ============ basic endpoints ============
 @app.get("/health")
 def health():
     return {"ok": True, "queue_size": queue.qsize()}
+
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
@@ -62,6 +65,7 @@ async def chat(req: ChatRequest):
     await queue.put(job, priority=priority)
     return {"job_id": job_id, "priority": priority}
 
+
 @app.get("/result/{job_id}")
 def get_result(job_id: str):
     """
@@ -73,6 +77,8 @@ def get_result(job_id: str):
         raise HTTPException(status_code=202, detail="Processing")
     return result
 
+
+# ============ SSE ============
 @app.get("/stream/{job_id}")
 async def stream_result(job_id: str):
     # 如果結果已經存在，直接回一次就好
@@ -101,6 +107,8 @@ async def stream_result(job_id: str):
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+
+# ============ WebSocket (Streaming version) ============
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
     await ws.accept()
@@ -112,7 +120,7 @@ async def websocket_chat(ws: WebSocket):
                 data = await ws.receive_text()
             except WebSocketDisconnect as e:
                 print("WS: client disconneted, e.code")
-                return # 正常結束 不再 close
+                return
             
             print("WS: recv", data)
 
@@ -134,25 +142,30 @@ async def websocket_chat(ws: WebSocket):
             
             await queue.put(job, priority=priority)
 
-            # 先告訴 client: 我收到了
+            # ACK
             await ws.send_json({
                 "type": "ack",
                 "job_id": job_id,
                 "priority": priority
             })
 
-            print("WS: sent ack", job_id)
-
-            # 等 worker 完成 (用你已經寫好的機制)
-            while True:
-                result = worker.get_result(job_id)
-                if result:
+            # Streaming Reply
+            async for chunk in worker.stream_reply(job):
+                try:
                     await ws.send_json({
-                        "type": "result",
-                        **result
+                        "type": "stream",
+                        "job_id": job_id,
+                        "delta": chunk
                     })
-                    break
-                await asyncio.sleep(0.1)
+                except WebSocketDisconnect:
+                    print("WS: client disconnected during streaming")
+                    return
+
+            # Done
+            await ws.send_json({
+                "type": "done",
+                "job_id": job_id
+            })
 
     except Exception as e:
         print("WS: server error", repr(e))
