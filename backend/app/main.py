@@ -3,9 +3,10 @@ import uuid
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.websockets import WebSocketDisconnect
 
 from backend.core.task_queue import TaskQueue, ChatJob
 from backend.core.worker import Worker
@@ -99,3 +100,60 @@ async def stream_result(job_id: str):
             worker.clear_event(job_id)
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.websocket("/ws/chat")
+async def websocket_chat(ws: WebSocket):
+    await ws.accept()
+    print("WS: accepted")
+
+    try:
+        while True:
+            try:
+                data = await ws.receive_text()
+            except WebSocketDisconnect as e:
+                print("WS: client disconneted, e.code")
+                return # 正常結束 不再 close
+            
+            print("WS: recv", data)
+
+            payload = json.loads(data)
+            user_id = payload.get("user_id", "anon")
+            message = payload.get("message", "")
+
+            # enqueue job
+            job_id = str(uuid.uuid4())
+            job = ChatJob(job_id=job_id, user_id=user_id, message=message)
+
+            emo = triage_emotion.analyze(message)
+            if emo.label in ("sad", "angry", "anxious") and emo.intensity >= 0.6:
+                priority = 1
+            elif emo.label in ("sad", "angry", "anxious"):
+                priority = 3
+            else:
+                priority = 8
+            
+            await queue.put(job, priority=priority)
+
+            # 先告訴 client: 我收到了
+            await ws.send_json({
+                "type": "ack",
+                "job_id": job_id,
+                "priority": priority
+            })
+
+            print("WS: sent ack", job_id)
+
+            # 等 worker 完成 (用你已經寫好的機制)
+            while True:
+                result = worker.get_result(job_id)
+                if result:
+                    await ws.send_json({
+                        "type": "result",
+                        **result
+                    })
+                    break
+                await asyncio.sleep(0.1)
+
+    except Exception as e:
+        print("WS: server error", repr(e))
+        return
