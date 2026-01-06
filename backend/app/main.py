@@ -150,16 +150,25 @@ async def websocket_chat(ws: WebSocket):
             })
 
             # Streaming Reply
-            async for chunk in worker.stream_reply(job):
-                try:
+            try:
+                async for chunk in worker.stream_reply(job):
                     await ws.send_json({
                         "type": "stream",
                         "job_id": job_id,
                         "delta": chunk
                     })
-                except WebSocketDisconnect:
-                    print("WS: client disconnected during streaming")
-                    return
+            except WebSocketDisconnect:
+                print("WS: client disconnected during streaming")
+                break
+
+            except Exception as e:
+                print("WS: straming error", repr(e))
+                await ws.send_json({
+                    "type": "error",
+                    "job_id": job_id,
+                    "message": "streaming failed"
+                })
+                continue
 
             # Done
             await ws.send_json({
@@ -169,4 +178,4 @@ async def websocket_chat(ws: WebSocket):
 
     except Exception as e:
         print("WS: server error", repr(e))
-        return
+        await ws.close(code=1011)

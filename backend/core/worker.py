@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from backend.core.task_queue import TaskQueue, ChatJob
 from backend.services.emotion import EmotionAnalyzer
 from backend.services.policy import PolicyEngine
-from backend.services.llm import MockLLMClient
+from backend.services.llm import OpenAILLMClient
 
 @dataclass
 class ChatResult:
@@ -27,23 +27,17 @@ class Worker:
         self.queue = queue
         self.emotion = EmotionAnalyzer()
         self.policy = PolicyEngine()
-        self.llm = MockLLMClient()
+        self.llm = OpenAILLMClient()
         self.results: Dict[str, ChatResult] = {}
         self._events: Dict[str, asyncio.Event] = {}
         self.result_ttl_sec = result_ttl_sec
-
-    def _compose_reply(self, style: str) -> str:
-        if style == "supportive":
-            return "我聽到你現在難受。我在這裡陪你。你願意多說一點發生了什麼嗎？"
-        if style == "deescalate":
-            return "我感覺你很不舒服。我們先把事情釐清：是什麼點讓你最生氣或最委屈？"
-        if style == "clarify":
-            return "我聽到你很金崩。我可以先陪你把情擴拆開：你最擔心的是哪個部分？"
-        return "收到。我可以更了解一下你的情況嗎？"
     
     def _cleanup_expired(self) -> None:
         now = time.time()
-        expired = [k for k, v in self.results.items() if now - v.created_at > self.result_ttl_sec]
+        expired = [
+            k for k, v in self.results.items()
+            if now - v.created_at > self.result_ttl_sec
+        ]
         for k in expired:
             self.results.pop(k, None)
         
@@ -56,7 +50,12 @@ class Worker:
                 async def handle_one():
                     emo = self.emotion.analyze(job.message)
                     pol = self.policy.decide(emo)
-                    reply = self._compose_reply(pol.style)
+                    
+                    chunks = []
+                    async for chunk in self.llm.stream_chat(job.message):
+                        chunks.append(chunk)
+                    
+                    reply = "".join(chunks)
 
                     self.results[job.job_id] = ChatResult(
                         job_id = job.job_id,
@@ -76,7 +75,7 @@ class Worker:
                     # fallback: 超時救回 安全的短回覆
                     self.results[job.job_id] = ChatResult(
                         job_id = job.job_id,
-                        reply = "我收到你的訊息了，我正在整理要怎麼回比較好，能再多給我一點背景嗎？",
+                        reply = "我正在整理回應，能再多說一點你的狀況嗎？",
                         emotion = {"label": "unknown", "intensity": 0.0, "confidence": 0.0},
                         policy = {"style": "fallback", "max_words": 60},
                         created_at = time.time(),
@@ -106,9 +105,8 @@ class Worker:
         self._events.pop(job_id, None)
 
     async def stream_reply(self, job):
-        prompt = job.message
-        print("Worker: stream_reply start")
-        async for chunk in self.llm.stream_chat(prompt):
-            print("Worker: yield chunk")
+        """
+        給 WebSocket 用的 streaming interface
+        """
+        async for chunk in self.llm.stream_chat(job.message):
             yield chunk
-        print("Worker: stream_reply end")
