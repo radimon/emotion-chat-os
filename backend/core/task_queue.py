@@ -20,8 +20,12 @@ class TaskQueue:
         self._q: asyncio.PriorityQueue[PriorityizedItem] = asyncio.PriorityQueue(maxsize=maxsize)
 
     async def put(self, job: ChatJob, priority: int = 10) -> None:
-        item = PriorityizedItem(priority=priority, created_at=time.time(), job=job)
-        await self._q.put(job)
+        item = PriorityizedItem(
+            priority=priority,
+            created_at=time.time(),
+            job=job,
+        )
+        await self._q.put(item)
     
     async def get(self) -> ChatJob:
         item = await self._q.get()

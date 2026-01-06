@@ -27,6 +27,7 @@ class Worker:
         self.emotion = EmotionAnalyzer()
         self.policy = PolicyEngine()
         self.results: Dict[str, ChatResult] = {}
+        self._events: Dict[str, asyncio.Event] = {}
         self.result_ttl_sec = result_ttl_sec
 
     def _compose_reply(self, style: str) -> str:
@@ -54,7 +55,7 @@ class Worker:
                     emo = self.emotion.analyze(job.message)
                     pol = self.policy.decide(emo)
                     reply = self._compose_reply(pol.style)
-                
+
                     self.results[job.job_id] = ChatResult(
                         job_id = job.job_id,
                         reply = reply,
@@ -62,13 +63,17 @@ class Worker:
                         policy = pol.__dict__,
                         created_at = time.time(),
                     )
+
+                    evt = self._events.get(job.job_id)
+                    if evt:
+                        evt.set()
             
                 try:
                    await asyncio.wait_for(handle_one(), timeout=2.0)
                 except asyncio.TimeoutError:
                     # fallback: 超時救回 安全的短回覆
                     self.results[job.job_id] = ChatResult(
-                        job = job.job_id,
+                        job_id = job.job_id,
                         reply = "我收到你的訊息了，我正在整理要怎麼回比較好，能再多給我一點背景嗎？",
                         emotion = {"label": "unknown", "intensity": 0.0, "confidence": 0.0},
                         policy = {"style": "fallback", "max_words": 60},
@@ -89,4 +94,11 @@ class Worker:
             "emotion": r.emotion,
             "policy": r.policy,
         }
-        
+    
+    def register_event(self, job_id: str) -> asyncio.Event:
+        evt = asyncio.Event()
+        self._events[job_id] = evt
+        return evt
+    
+    def clear_event(self, job_id: str) -> None:
+        self._events.pop(job_id, None)

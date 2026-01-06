@@ -1,8 +1,10 @@
 import asyncio
 import uuid
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.core.task_queue import TaskQueue, ChatJob
@@ -69,3 +71,31 @@ def get_result(job_id: str):
         # 202 表示 "已受理但雙未完成" 很合理
         raise HTTPException(status_code=202, detail="Processing")
     return result
+
+@app.get("/stream/{job_id}")
+async def stream_result(job_id: str):
+    # 如果結果已經存在，直接回一次就好
+    result = worker.get_result(job_id)
+    if result is not None:
+        async def immediate():
+            yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
+        return StreamingResponse(immediate(), media_type="text/event-stream")
+    
+    # 否則：註冊事件，等 worker 通知
+    evt = worker.register_event(job_id)
+
+    async def event_generator():
+        try:
+            # 最多等 10 秒 (避免永遠掛著)
+            await asyncio.wait_for(evt.wait(), timeout=10.0)
+            result = worker.get_result(job_id)
+            if result is not None:
+                yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
+            else:
+                yield "event: timeout\ndata: {}\n\n"
+        except asyncio.TimeoutError:
+            yield "event: timeout\ndata: {}\n\n"
+        finally:
+            worker.clear_event(job_id)
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
