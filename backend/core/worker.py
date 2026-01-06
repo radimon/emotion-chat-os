@@ -6,6 +6,7 @@ from typing import Dict, Optional
 from backend.core.task_queue import TaskQueue, ChatJob
 from backend.services.emotion import EmotionAnalyzer
 from backend.services.policy import PolicyEngine
+from backend.services.llm import MockLLMClient
 
 @dataclass
 class ChatResult:
@@ -26,6 +27,7 @@ class Worker:
         self.queue = queue
         self.emotion = EmotionAnalyzer()
         self.policy = PolicyEngine()
+        self.llm = MockLLMClient()
         self.results: Dict[str, ChatResult] = {}
         self._events: Dict[str, asyncio.Event] = {}
         self.result_ttl_sec = result_ttl_sec
@@ -104,12 +106,9 @@ class Worker:
         self._events.pop(job_id, None)
 
     async def stream_reply(self, job):
-        """
-        Async generator: yields partial reply chunks
-        """
-        text = f"我聽到你說：{job.message}。這聽起來真的很不容易。"
-        words = text.split(" ")
-
-        for w in words:
-            await asyncio.sleep(0.25) # 模擬 LLM latency
-            yield w + " "
+        prompt = job.message
+        print("Worker: stream_reply start")
+        async for chunk in self.llm.stream_chat(prompt):
+            print("Worker: yield chunk")
+            yield chunk
+        print("Worker: stream_reply end")
