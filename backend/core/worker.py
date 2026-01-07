@@ -7,6 +7,7 @@ from backend.core.task_queue import TaskQueue, ChatJob
 from backend.services.emotion import EmotionAnalyzer
 from backend.services.policy import PolicyEngine
 from backend.services.llm import OpenAILLMClient
+from backend.core.session_store import SessionStore
 
 @dataclass
 class ChatResult:
@@ -31,6 +32,7 @@ class Worker:
         self.results: Dict[str, ChatResult] = {}
         self._events: Dict[str, asyncio.Event] = {}
         self.result_ttl_sec = result_ttl_sec
+        self.sessions = SessionStore(max_turns=20)
     
     def _cleanup_expired(self) -> None:
         now = time.time()
@@ -104,32 +106,41 @@ class Worker:
     def clear_event(self, job_id: str) -> None:
         self._events.pop(job_id, None)
 
-    async def stream_reply(self, job):
-        """
-        Stream reply from LLM with emotion-aware policy
-        """
-        # 分析情緒
-        emo = self.emotion.analyze(job.message)
+    async def stream_reply(self, job, session_id: str):
+        user_id = job.user_id
 
-        # 決定回覆策略
-        pol = self.policy.decide(emo)
-
-        # 組合prompt
-        prompt = (
-            f"[使用者情緒]\n"
-            f"- 類型： {emo.label}\n"
-            f"- 強度： {emo.intensity:.2f}\n\n"
-            f"[使用者訊息]\n"
-            f"{job.message}\n\n"
-            f"請依照上述情緒狀態回應"
+        # 紀錄使用者訊息
+        self.sessoins.add_user_message(
+            user_id = user_id,
+            session_id = session_id,
+            content = job.message
         )
 
-        print(f"Worker: policy = {pol.style}")
+        # 情緒與策略
+        emo = self.emotion.analyze(job.message)
+        pol = self.policy.decide(emo)
 
-        # 呼叫 LLM
-        async for chunk in self.llm.stream_chat(
-            prompt = prompt,
-            system_prompt = pol.system_prompt,
+        # 取歷史對話
+        history = self.sessoins.get_history(user_id, session_id)
+
+        # 組 messages
+        messages = [
+            {"role": "system", "content": pol.system_prompt},
+            *history
+        ]
+
+        full_reply = ""
+
+        async for chunk in self.llm.stream_chat_messages(
+            messages = messages,
             max_words = pol.max_words,
         ):
+            full_reply += chunk
             yield chunk
+        
+        # 回存 assistant 回覆
+        self.sessions.add_assistant_message(
+            user_id = user_id,
+            session_id = session_id,
+            content = full_reply
+        )

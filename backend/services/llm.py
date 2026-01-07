@@ -74,6 +74,24 @@ class OpenAILLMClient(LLMClient):
         except Exception as e:
             print("LLM: streaming error", repr(e))
             yield " (抱歉，我現在有點卡住，但我有收到你的訊息。)"
+    
+    async def stream_chat_messages(
+            self,
+            messages: list[dict],
+            max_words: int = 100,
+    ) -> AsyncGenerator[str, None]:
+        
+        stream = await self.client.chat.completions.create(
+            model = "gpt-4o-mini",
+            messages = messages,
+            stream = True,
+            max_tokens = max_words * 2,
+        )
+
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                yield delta.content
 
 
 # ========== Mock Implementation (for testing / fallback) ==========

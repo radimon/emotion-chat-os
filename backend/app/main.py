@@ -125,7 +125,9 @@ async def websocket_chat(ws: WebSocket):
             print("WS: recv", data)
 
             payload = json.loads(data)
+
             user_id = payload.get("user_id", "anon")
+            session_id = payload.get("session_id", "default")
             message = payload.get("message", "")
 
             # enqueue job
@@ -146,6 +148,7 @@ async def websocket_chat(ws: WebSocket):
             await ws.send_json({
                 "type": "ack",
                 "job_id": job_id,
+                "session_id": session_id,
                 "priority": priority
             })
 
@@ -155,6 +158,7 @@ async def websocket_chat(ws: WebSocket):
                     await ws.send_json({
                         "type": "stream",
                         "job_id": job_id,
+                        "session_id": session_id,
                         "delta": chunk
                     })
             except WebSocketDisconnect:
@@ -173,7 +177,8 @@ async def websocket_chat(ws: WebSocket):
             # Done
             await ws.send_json({
                 "type": "done",
-                "job_id": job_id
+                "job_id": job_id,
+                "session_id": session_id
             })
 
     except Exception as e:
