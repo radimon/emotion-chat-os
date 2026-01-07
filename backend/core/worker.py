@@ -106,7 +106,30 @@ class Worker:
 
     async def stream_reply(self, job):
         """
-        給 WebSocket 用的 streaming interface
+        Stream reply from LLM with emotion-aware policy
         """
-        async for chunk in self.llm.stream_chat(job.message):
+        # 分析情緒
+        emo = self.emotion.analyze(job.message)
+
+        # 決定回覆策略
+        pol = self.policy.decide(emo)
+
+        # 組合prompt
+        prompt = (
+            f"[使用者情緒]\n"
+            f"- 類型： {emo.label}\n"
+            f"- 強度： {emo.intensity:.2f}\n\n"
+            f"[使用者訊息]\n"
+            f"{job.message}\n\n"
+            f"請依照上述情緒狀態回應"
+        )
+
+        print(f"Worker: policy = {pol.style}")
+
+        # 呼叫 LLM
+        async for chunk in self.llm.stream_chat(
+            prompt = prompt,
+            system_prompt = pol.system_prompt,
+            max_words = pol.max_words,
+        ):
             yield chunk

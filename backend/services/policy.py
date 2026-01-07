@@ -2,21 +2,48 @@ from dataclasses import dataclass
 from backend.services.emotion import EmotionState
 
 @dataclass
-class PolicyDecision:
+class ReplyPolicy:
     style: str       # "supportive" | "deescalte" | "clarify" | "neutral"
     max_words: int
+    system_prompt: str
 
 class PolicyEngine:
     """
-    MVP: map emotion -> response policy
-    Later: add risk tiers, uncertainty handling, and safety routing.
+    Decide reply policy based on emotion analysis
     """
-    def decide(self, emo: EmotionState) -> PolicyDecision:
-        if emo.label == "sad" and emo.intensity >= 0.5:
-            return PolicyDecision(style="supportive", max_words=90)
-        if emo.label == "angry" and emo.intensity >= 0.5:
-            return PolicyDecision(style="deescalte", max_words=90)
-        if emo.label == "anxious" and emo.intensity >= 0.5:
-            return PolicyDecision(style="clarify", max_words=90)
+    def decide(self, emotion):
+        label = emotion.label
+        intensity = emotion.intensity
+
+        # 高情緒強度：優先安撫 / 降溫
+        if label in ("sad", "anxious") and intensity >= 0.6:
+            return ReplyPolicy(
+                style = "supportive",
+                max_words = 80,
+                system_prompt = (
+                    "你是一位溫和、富有圖領新的對話者。"
+                    "請先接至對方的情緒，避免給建議或說教，"
+                    "多使用理解與陪伴的語氣。"
+                )
+            )
         
-        return PolicyDecision(style="neutral", max_words=70)
+        if label == "angry" and intensity >= 0.6:
+            return ReplyPolicy(
+                style = "deescalate",
+                max_words = 60,
+                system_prompt = (
+                    "你是一位冷靜、穩定的對話者。"
+                    "請幫助對方降溫，避免火上加油，"
+                    "引導對方釐清事情而非指責他人。"
+                )
+            )
+        
+        # 低強度或中性
+        return ReplyPolicy(
+            style = "neutral",
+            max_words = 100,
+            system_prompt = (
+                "你是一位理性、清楚的助理，"
+                "請根據使用者的訊息提供回應。"
+            )
+        )

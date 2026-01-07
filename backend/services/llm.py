@@ -33,7 +33,12 @@ class OpenAILLMClient(LLMClient):
         print("LLM: OpenAI client initialized")
         print("LLM: API key loaded =", True)
     
-    async def stream_chat(self, prompt: str) -> AsyncGenerator[str, None]:
+    async def stream_chat(
+            self,
+            prompt: str,
+            system_prompt: str,
+            max_words: int = 100,
+            ) -> AsyncGenerator[str, None]:
         """
         Yield partial tokens from OpenAI streaming API
         """
@@ -45,7 +50,7 @@ class OpenAILLMClient(LLMClient):
                 messages = [
                     {
                         "role": "system",
-                        "content": "你是一位溫和、支持性的助理，專注於情緒理解與回應。"
+                        "content": system_prompt
                     },
                     {
                         "role": "user",
