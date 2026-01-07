@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Emotion Chat</title>
+        <style>
+            body {
+                margin: 0;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont;
+                background: #f6f7f9;
+                display: flex;
+                height: 100vh;
+            }
+
+            .container {
+                width: 100%;
+                max-width: 800px;
+                margin: auto;
+                display: flex;
+                flex-direction: column;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            }
+
+            header {
+                padding: 16px;
+                border-bottom: 1px solid #eee;
+                font-weight: bold;
+            }
+
+            #chat {
+                flex: 1;
+                padding: 16px;
+                overflow-y: auto;
+            }
+
+            .msg {
+                margin-bottom: 12px;
+                max-width: 70%;
+                line-height: 1.5;
+                white-space: pre-wrap;
+            }
+
+            .user {
+                margin-left: auto;
+                background: #e6f0ff;
+                padding: 10px 14px;
+                border-radius: 12px 12px 0 12px;
+            }
+
+            .assistant {
+                margin-right: auto;
+                background: #f1f1f1;
+                padding: 10px 14px;
+                border-radius: 12px 12px 12px 0;
+            }
+
+            footer {
+                display: flex;
+                border-top: 1px solid #eee;
+                padding: 12px;
+                gap: 8px;
+            }
+
+            input {
+                flex: 1;
+                padding: 10px;
+                font-size: 16px;
+            }
+
+            button {
+                padding: 10px 16px;
+                font-size: 16px;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <header>Emotion Chat (Demo)</header>
+        <div id="chat"></div>
+
+        <footer>
+            <input id="input" placeholder="輸入訊息..." />
+            <button id="send">送出</button>
+        </footer>
+        </div>
+
+        <script>
+            const chat = document.getElementById("chat");
+            const input = document.getElementById("input");
+            const sendBtn = document.getElementById("send");
+
+            const userId = "demo-user";
+            let ws;
+            let currentAssistantBubble = null;
+
+            function addMessage(role, text) {
+                const div = document.createElement("div");
+                div.className = `msg ${role}`;
+                div.textContent = text;
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
+                return div;
+            }
+
+            function connectWS() {
+                ws = new WebSocket("ws://127.0.0.1:8000/ws/chat");
+
+                ws.onopen = () => {
+                    console.log("WS connected");
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if(data.type === "ack"){
+                        currentAssistantBubble = addMessage("assistant", "");
+                    }
+
+                    if(data.type === "stream"){
+                        if(currentAssistantBubble){
+                            currentAssistantBubble.textContent += data.delta;
+                            chat.scrollTop = chat.scrollHeight;
+                        }
+                    }
+
+                    if(data.type === "done"){
+                        currentAssistantBubble = null;
+                    }
+
+                    if(data.type === "error"){
+                        addMessage("assistant", "發生錯誤，請稍後再試。");
+                        currentAssistantBubble = null;
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.warn("WS closed, reconnecting...");
+                    setTimeout(connectWS, 1000);
+                };
+            }
+
+            sendBtn.onclick = () => {
+                const text = input.value.trim();
+                if(!text) return;
+
+                addMessage("user", text);
+                input.value = "";
+
+                ws.send(JSON.stringify({
+                    user_id: userId,
+                    message: text
+                }));
+            };
+
+            input.addEventListener("keydown", (e) => {
+                if(e.key === "Enter") sendBtn.click();
+            });
+
+            connectWS();
+        </script>
+</html>
