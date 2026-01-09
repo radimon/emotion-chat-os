@@ -88,6 +88,32 @@
         </div>
 
         <script>
+            async function quickLoginForTest(){
+                const res = await fetch("http://127.0.0.1:8000/auth/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        username: "testuser",
+                        password: "123456"
+                    })
+                });
+
+                const data = await res.json();
+                console.log("long response =", data);
+
+                if(data.access_token){
+                    localStorage.setItem("access_token", data.access_token);
+                    console.log("token saved to localStorage");
+                }
+                else{
+                    alert("login failed");
+                }
+            }
+
+            quickLoginForTest();
+            
             console.log("SCRIPT START");
             const chat = document.getElementById("chat");
             const input = document.getElementById("input");

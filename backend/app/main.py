@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, Query
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.websockets import WebSocketDisconnect
 from jose import jwt
@@ -46,6 +47,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title = "Emotion Chat (OS-style)",
     lifespan = lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = ["*"],
+    allow_credentials = True,
+    allow_methods = ["*"],
+    allow_headers = ["*"],
 )
 
 # ============ Router ============
@@ -133,22 +142,19 @@ async def stream_result(job_id: str):
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket, token: str = Query(...)):
     await ws.accept()
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print("JWT payload =", payload)
-
         user_id = payload.get("sub")
-        print("JWT sub =", user_id)
-        
+        if not user_id:
+            raise ValueError("Missing sub in token")
+        print("JWT OK, user_id =", user_id)
+
     except Exception as e:
-        print("JWT decode failed:", e)
+        print("JWT decode failed:", repr(e))
         await ws.close(code=1008)
         return
-    
-    print("WS: accepted")
-    print("WS token = ", token)
 
-    # ✅ 一個 WebSocket 連線 = 一個 session
     session_id = str(uuid.uuid4())
 
     try:
