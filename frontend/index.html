@@ -88,6 +88,7 @@
         </div>
 
         <script>
+            console.log("SCRIPT START");
             const chat = document.getElementById("chat");
             const input = document.getElementById("input");
             const sendBtn = document.getElementById("send");
@@ -106,7 +107,18 @@
             }
 
             function connectWS() {
-                ws = new WebSocket("ws://127.0.0.1:8000/ws/chat");
+                console.log("connectWS() CALLED");
+                const token = localStorage.getItem("access_token");
+                console.log("WS token =", token);
+
+                if(!token){
+                    alert("尚未登入，沒有token");
+                    return;
+                }
+
+                console.log("before new WebSocket");
+                ws = new WebSocket(`ws://127.0.0.1:8000/ws/chat?token=${token}`);
+                console.log("after new WebSocket", ws);
 
                 ws.onopen = () => {
                     console.log("WS connected");
@@ -145,14 +157,19 @@
             sendBtn.onclick = () => {
                 const text = input.value.trim();
                 if(!text) return;
+                
+                console.log("WS state =", ws && ws.readyState);
+
+                if(ws && ws.readyState === WebSocket.OPEN){
+                    ws.send(JSON.stringify({message: text}));
+                }
+                else{
+                    alert("WebSocket 尚未連線");
+                }
 
                 addMessage("user", text);
                 input.value = "";
-
-                ws.send(JSON.stringify({
-                    user_id: userId,
-                    message: text
-                }));
+                
             };
 
             input.addEventListener("keydown", (e) => {

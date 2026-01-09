@@ -12,3 +12,7 @@ starlette==0.50.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.40.0
+sqlalchemy
+python-jose[cryptography]
+passlib==1.7.4
+bcrypt==3.2.2

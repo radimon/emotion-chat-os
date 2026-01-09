@@ -3,14 +3,23 @@ import uuid
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.websockets import WebSocketDisconnect
+from jose import jwt
 
 from backend.core.task_queue import TaskQueue, ChatJob
 from backend.core.worker import Worker
 from backend.services.emotion import EmotionAnalyzer
+from backend.db.base import Base, engine
+from backend.db import models
+from backend.auth.router import router as auth_router
+from backend.auth.auth import get_current_user, SECRET_KEY, ALGORITHM
+
+
+# ============ DB ============
+Base.metadata.create_all(bind=engine)
 
 
 # ============ global services ============
@@ -38,6 +47,9 @@ app = FastAPI(
     title = "Emotion Chat (OS-style)",
     lifespan = lifespan
 )
+
+# ============ Router ============
+app.include_router(auth_router)
 
 
 # ============ schemas ============
@@ -119,9 +131,22 @@ async def stream_result(job_id: str):
 
 # ============ WebSocket (Streaming version) ============
 @app.websocket("/ws/chat")
-async def websocket_chat(ws: WebSocket):
+async def websocket_chat(ws: WebSocket, token: str = Query(...)):
     await ws.accept()
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print("JWT payload =", payload)
+
+        user_id = payload.get("sub")
+        print("JWT sub =", user_id)
+        
+    except Exception as e:
+        print("JWT decode failed:", e)
+        await ws.close(code=1008)
+        return
+    
     print("WS: accepted")
+    print("WS token = ", token)
 
     # ✅ 一個 WebSocket 連線 = 一個 session
     session_id = str(uuid.uuid4())
@@ -137,7 +162,6 @@ async def websocket_chat(ws: WebSocket):
             print("WS: recv", data)
             payload = json.loads(data)
 
-            user_id = payload.get("user_id", "anon")
             message = payload.get("message", "")
 
             # enqueue job
@@ -200,3 +224,4 @@ async def websocket_chat(ws: WebSocket):
     except Exception as e:
         print("WS: server error", repr(e))
         await ws.close(code=1011)
+    
