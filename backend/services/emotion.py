@@ -1,36 +1,53 @@
 from dataclasses import dataclass
+from typing import Dict
 
 @dataclass
-class EmotionState:
-    label: str         # "sad" | "angry" | "anxious" | "happy" | "neutral"
-    intensity: float   # 0.0 ~ 1.0
-    confidence: float  # 0.0 ~ 1.0
+class EmotionResult:
+    label: str         
+    intensity: float   
+    confidence: float
+    fuzzy: Dict[str, float]
 
 
 class EmotionAnalyzer:
-    """
-    MVP: rule-based emotion detector.
-    Later: replace with ML/LLM; keep the same output contract.
-    """
-    def analyze(self, text: str) -> EmotionState:
-        t = (text or "").lower().strip()
+    def analyze(self, text: str) -> EmotionResult:
+        text = text.lower()
 
-        if not t:
-            return EmotionState(label="neutral", intensity=0.10, confidence=0.40)
-    
-        sad_keys = ["難過", "傷心", "想哭", "sad", "depressed", "cry", "hopeless"]
-        angry_keys = ["生氣", "火大", "憤怒", "angry", "mad", "furious"]
-        anxious_keys = ["焦慮", "緊張", "怕", "不安", "anxious", "panic", "worried"]
-        happy_keys = ["開心", "快樂", "幸福", "happy", "exicted", "great"]
+        sadness = 0.0
+        anger = 0.0
+        anxiety = 0.0
 
-        if any(k in t for k in sad_keys):
-            return EmotionState(label="sad", intensity=0.75, confidence=0.60)
-        if any(k in t for k in angry_keys):
-            return EmotionState(label="angry", intensity=0.70, confidence=0.60)
-        if any(k in t for k in anxious_keys):
-            return EmotionState(label="anxious", intensity=0.65, confidence=0.55)
-        if any(k in t for k in happy_keys):
-            return EmotionState(label="happy", intensity=0.55, confidence=0.55)
+        # very naive lexical cues (可解釋)
+        if any(w in text for w in ["累", "難過", "好煩", "撐不下去"]):
+            sadness += 0.6
         
-        return EmotionState(label="neutral", intensity=0.25, confidence=0.50)
+        if any(w in text for w in ["氣", "不爽", "受不了"]):
+            anger += 0.6
+
+        if any(w in text for w in ["怕", "擔心", "不知道怎麼辦"]):
+            anxiety += 0.6
         
+        # normalize / clamp
+        sadness = min(sadness, 1.0)
+        anger = min(anger, 1.0)
+        anxiety = min(anxiety, 1.0)
+
+        calm = max(0.0, 1.0 - max(sadness, anger, anxiety))
+
+        fuzzy = {
+            "sadness": sadness,
+            "anger": anger,
+            "anxiety": anxiety,
+            "calm": calm,
+        }
+
+        # dominant label (for old system)
+        label = max(fuzzy, key=fuzzy.get)
+        intensity = fuzzy[label]
+
+        return EmotionResult(
+            label = label,
+            intensity = intensity,
+            confidence = 0.8,
+            fuzzy = fuzzy,
+        )

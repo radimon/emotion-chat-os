@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from backend.services.emotion import EmotionState
+from backend.services.emotion import EmotionResult
 
 @dataclass
 class ReplyPolicy:
