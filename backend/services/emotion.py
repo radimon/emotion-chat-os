@@ -45,6 +45,10 @@ class EmotionAnalyzer:
         label = max(fuzzy, key=fuzzy.get)
         intensity = fuzzy[label]
 
+        print("[EmotionAnalyzer]")
+        print(" text = ", text)
+        print(" fuzzy = ", fuzzy)
+
         return EmotionResult(
             label = label,
             intensity = intensity,

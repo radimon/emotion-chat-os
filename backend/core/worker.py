@@ -115,9 +115,9 @@ class Worker:
 
         # ---- session: user message ----
         self.sessions.add_user_message(
-            user_id=user_id,
-            session_id=session_id,
-            content=job.message
+            user_id = user_id,
+            session_id = session_id,
+            content = job.message
         )
 
 
@@ -130,7 +130,13 @@ class Worker:
         history = self.sessions.get_history(user_id, session_id)
 
         messages = [
-            {"role": "system", "content": pol.system_prompt},
+            {
+                "role": "system",
+                "content": (
+                    pol.system_prompt + "\n\n" +
+                    pol.prompt_context
+                )
+            },
             *history
         ]
 
@@ -139,8 +145,8 @@ class Worker:
 
         # ---- streaming from LLM ----
         async for chunk in self.llm.stream_chat_messages(
-            messages=messages,
-            max_words=pol.max_words,
+            messages = messages,
+            max_words = pol.max_words,
         ):
             full_reply += chunk
             yield chunk
@@ -148,19 +154,19 @@ class Worker:
 
         # ---- session: assistant message ----
         self.sessions.add_assistant_message(
-            user_id=user_id,
-            session_id=session_id,
-            content=full_reply
+            user_id = user_id,
+            session_id = session_id,
+            content = full_reply
         )
 
 
         # ---- store final result (for polling / SSE) ----
         self.results[job.job_id] = ChatResult(
-            job_id=job.job_id,
-            reply=full_reply,
-            emotion=emo.__dict__,
-            policy=pol.__dict__,
-            created_at=time.time(),
+            job_id = job.job_id,
+            reply = full_reply,
+            emotion = emo.__dict__,
+            policy = pol.__dict__,
+            created_at = time.time(),
         )
 
 

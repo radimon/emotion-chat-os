@@ -35,8 +35,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Emotion Chat (OS-style)",
-    lifespan=lifespan
+    title = "Emotion Chat (OS-style)",
+    lifespan = lifespan
 )
 
 
@@ -56,9 +56,9 @@ def health():
 async def chat(req: ChatRequest):
     job_id = str(uuid.uuid4())
     job = ChatJob(
-        job_id=job_id,
-        user_id=req.user_id,
-        message=req.message
+        job_id = job_id,
+        user_id = req.user_id,
+        message = req.message
     )
 
     # triage: 先粗估情緒嚴重程度 -> priority
@@ -143,9 +143,9 @@ async def websocket_chat(ws: WebSocket):
             # enqueue job
             job_id = str(uuid.uuid4())
             job = ChatJob(
-                job_id=job_id,
-                user_id=user_id,
-                message=message
+                job_id = job_id,
+                user_id = user_id,
+                message = message
             )
 
             # emotion triage -> priority
